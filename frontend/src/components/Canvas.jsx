@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import Options from "./Options";
 
-export default function Canvas() {
+export default function Canvas({ sendImage }) {
   const canvasRef = useRef(null);
   const ctxRef = useRef(null);
   const isDrawing = useRef(false);
@@ -12,7 +12,7 @@ export default function Canvas() {
   const [undo, setUndo] = useState(false);
   const [erase, setErase] = useState(false);
   const [fill, setFill] = useState(false);
-  const [color, setColor] = useState("#000000")
+  const [color, setColor] = useState("#000000");
 
   const resizeCanvas = () => {
     const canvas = canvasRef.current;
@@ -27,6 +27,15 @@ export default function Canvas() {
     redraw();
   };
 
+  const takeImgData = () => {
+    const canvas = canvasRef.current;
+    const ctx = ctxRef.current;
+    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const timer = setInterval(() => {
+      sendImage(imgData);
+    }, 3000);
+  };
+
   const redraw = () => {
     const ctx = ctxRef.current;
     ctx.clearRect(0, 0, width.current, height.current);
@@ -37,7 +46,7 @@ export default function Canvas() {
         const [x, y] = path[i];
         ctx.lineTo(x * width.current, y * height.current);
       }
-      ctx.strokeStyle = "red";
+      ctx.strokeStyle = color;
       ctx.lineWidth = 8;
       ctx.lineCap = "round";
       ctx.stroke();
@@ -96,7 +105,7 @@ export default function Canvas() {
       ctx.clearRect(offsetX - 5, offsetY - 5, 10, 10);
     } else {
       ctx.lineTo(offsetX, offsetY);
-      ctx.strokeStyle = "red";
+      ctx.strokeStyle = color;
       ctx.lineWidth = 8;
       ctx.lineCap = "round";
       ctx.stroke();
@@ -166,6 +175,7 @@ export default function Canvas() {
     <>
       <canvas
         ref={canvasRef}
+        onClick={takeImgData}
         onPointerDown={startDrawing}
         onPointerMove={draw}
         onPointerUp={stopDrawing}

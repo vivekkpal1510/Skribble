@@ -1,50 +1,54 @@
 import { useEffect, useRef, useState } from "react";
-import { messages as dummy } from "../assets/dummyMessages";
 
-export default function ({text}) {
-  const [messages, setMessages] = useState(dummy);
+export default function ChatBox({ text, chat }) {
+  const [messages, setMessages] = useState([{ }]);
   const messageRef = useRef(null);
   const chatsRef = useRef(null);
+
   const sendMessage = (e) => {
     e.preventDefault();
     const message = messageRef.current.value.trim();
-    text(message);
     if (message) {
-      setMessages((prevState) => [
-        ...prevState,
-        {
-          name: "You",
-          text: message,
-        },
-      ]);
+      text(message);
       messageRef.current.value = "";
     }
-    
   };
 
   useEffect(() => {
-    chatsRef.current.scrollTop = chatsRef.current.scrollHeight;
+    if (chat?.name && chat?.chat) {
+      setMessages((prevState) => [
+        ...prevState,
+        {
+          name: chat.name,
+          text: chat.chat,
+        },
+      ]);
+    }
+  }, [chat]);
+
+  useEffect(() => {
+    if (chatsRef.current) {
+      chatsRef.current.scrollTop = chatsRef.current.scrollHeight;
+    }
   }, [messages]);
 
   return (
-    <>
+    <div className="chat-container">
       <div ref={chatsRef} className="chats">
         {messages.map((message, idx) => (
           <div key={idx} className="message">
-            <strong>{message.name}</strong> : <div>{message.text}</div>
+            <strong>{message.name}</strong>: <span>{message.text}</span>
           </div>
         ))}
       </div>
-      <form className="text">
+      <form className="text" onSubmit={sendMessage}>
         <input
           type="text"
           placeholder="Type your message..."
           ref={messageRef}
         />
-        <button onClick={sendMessage} type="submit">
-          Send
-        </button>
+        <button type="submit">Send</button>
       </form>
-    </>
+    </div>
   );
 }

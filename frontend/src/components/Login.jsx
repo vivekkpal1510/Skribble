@@ -11,48 +11,59 @@ const Login = () => {
   const [players, setPlayers] = useState([]);
   const [url, setUrl] = useState('');
   const [room, setRoom] = useState('');
-  const clientRef = useRef(null); 
-  const initialize = () => {
+  const clientRef = useRef(null);
+  const [chat, setChat] = useState({});
+
+  const initialize = async () => {
     const client = new Client({
       brokerURL: 'ws://localhost:8080/ws',
-      onConnect: () => {
-        client.subscribe('/topic/msg', (message) => {
+      onConnect: async () => {
+        client.subscribe(`/topic/${username}`, async (message) => {
+          const response = JSON.parse(message.body);
+          if (response.messageType === 'CREATEROOM') {
+            setRoom(response.room);
+            await new Promise((resolve) => {
+              client.subscribe(`/topic/${response.room}`, (roomMessage) => {
+                const parsedMessage = JSON.parse(roomMessage.body);
+                if(parsedMessage.messageType === 'CHAT'){
+                setChat({
+                  name: parsedMessage.username,
+                  chat: parsedMessage.messageString,
+                });
+              }
+                resolve();
+              });
+            });
+          }
         });
-        client.subscribe(`/topic/${username}`, (message) => {
-           setRoom(JSON.parse(message.body).messageString);
-        });
+
         client.publish({
           destination: '/app/createRoom',
           body: JSON.stringify({
             messageType: 'CREATEROOM',
             messageString: `${username}`,
-            username: username,
+            username: `${username}`,
+            room: 'CREATE',
           }),
         });
       },
-      onWebSocketError: (error) => {
-        console.error('WebSocket error:', error);
-      },
-      onStompError: (error) => {
-        console.error('STOMP error:', error);
-      },
-      onDisconnect: () => {
-        console.log('Disconnected');
-      },
+      onWebSocketError: (error) => console.error('WebSocket error:', error),
+      onStompError: (error) => console.error('STOMP error:', error),
+      onDisconnect: () => console.log('Disconnected'),
     });
 
     client.activate();
-    clientRef.current = client; 
+    clientRef.current = client;
   };
 
-  const handleCreate = () => {
-    if (username.trim() === '') {
+  const handleCreate = async () => {
+    const trimmedUsername = username.trim();
+    if (!trimmedUsername) {
       alert('Please enter a username');
       return;
     }
-    initialize();
-    setLoggedIn(true);
-    
+    setUsername(trimmedUsername);
+    initialize().then(() => setLoggedIn(true));
   };
 
   const handleJoin = (room) => {
@@ -60,40 +71,40 @@ const Login = () => {
       alert('Please enter a username');
       return;
     }
+
     const client = new Client({
       brokerURL: 'ws://localhost:8080/ws',
       onConnect: () => {
-        client.subscribe('/topic/msg', (message) => {
-          console.log(`Received: ${message.body}`);
-        });
-
         client.subscribe(`/topic/${username}`, (message) => {
           const response = JSON.parse(message.body);
-          setPlayers(response.messageString);
-          setUrl("/topic/" + room);
+          setPlayers(response.players || []);
+          setUrl(`/topic/${room}`);
         });
 
         client.subscribe(`/topic/${room}`, (message) => {
+          const parsedMessage = JSON.parse(message.body);
+          if (parsedMessage.messageType === 'CHAT') {
+            setChat((prevChat) => ({
+              ...prevChat,
+              name: parsedMessage.username,
+              chat: parsedMessage.messageString,
+            }));
+          }
         });
 
         client.publish({
           destination: '/app/joinRoom',
           body: JSON.stringify({
             messageType: 'JOINROOM',
-            messageString: `${room}`,
-            username: username,
+            messageString: 'try to join',
+            username: `${username}`,
+            room: `${room}`,
           }),
         });
       },
-      onWebSocketError: (error) => {
-        console.error('WebSocket error:', error);
-      },
-      onStompError: (error) => {
-        console.error('STOMP error:', error);
-      },
-      onDisconnect: () => {
-        console.log('Disconnected');
-      },
+      onWebSocketError: (error) => console.error('WebSocket error:', error),
+      onStompError: (error) => console.error('STOMP error:', error),
+      onDisconnect: () => console.log('Disconnected'),
     });
 
     client.activate();
@@ -109,35 +120,50 @@ const Login = () => {
           messageType: 'LEAVE',
           messageString: `${room}`,
           username: `${username}`,
+          room: `${room}`,
         }),
       });
+      clientRef.current.deactivate();
+      clientRef.current = null;
       setLoggedIn(false);
       setPlayers([]);
-      setRoom('');  
+      setRoom('');
       setUrl('');
       setUsername('');
-      
-      // clientRef.current.deactivate();
+      setChat({});
     }
-    setLoggedIn(false);
-    setPlayers([]);
-    setUrl('');
-    setRoom('');
-    setUsername('');
   };
 
-  const handelText = (message) => {
+  const handleText = (message) => {
     if (clientRef.current) {
       clientRef.current.publish({
         destination: '/app/chat',
         body: JSON.stringify({
           messageType: 'CHAT',
           messageString: message,
-          username: `${room}`,
+          username: `${username}`,
+          room: `${room}`,
         }),
       });
     }
   };
+
+  const handleImage = (image) => {
+    if (clientRef.current) {
+      clientRef.current.publish({
+        destination: '/app/chat',
+        body: JSON.stringify({
+          messageType: 'IMAGE',
+          messageString: image,
+          username: `${username}`,
+          room: `${room}`,
+        }),
+      });
+    }
+  }
+
+  const handleRoomChange = (e) => setRoom(e.target.value);
+  const handleUsernameChange = (e) => setUsername(e.target.value);
 
   return (
     <div className="Home">
@@ -147,23 +173,28 @@ const Login = () => {
             type="text"
             placeholder="Enter your username"
             value={username}
-            onChange={(e) => setUsername(e.target.value)}
+            onChange={handleUsernameChange}
           />
           <button onClick={handleCreate}>Create</button>
-          <p> Or join by id </p>
-          <input type="text" placeholder="Enter room id" value={room} onChange={(e) => setRoom(e.target.value)} />
+          <p>Or join by ID</p>
+          <input
+            type="text"
+            placeholder="Enter room id"
+            value={room}
+            onChange={handleRoomChange}
+          />
           <button onClick={() => handleJoin(room)}>Join</button>
         </div>
       ) : (
         <div>
           <Navbar back={handleDisconnect}></Navbar>
           <div className="game">
-            <Players></Players>
+            <Players players={players}></Players>
             <div className="board">
-              <Canvas></Canvas>
+              <Canvas sendImage= {handleImage}></Canvas>
             </div>
             <div className="chatbox">
-              <ChatBox text={handelText}></ChatBox>
+              <ChatBox text={handleText} chat={chat}></ChatBox>
             </div>
           </div>
         </div>
